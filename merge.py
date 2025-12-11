@@ -59,6 +59,10 @@ def get_wikidata_frame():
 	SPARQLWrapper.__agent__ = USER_AGENT
 	df = get_sparql_dataframe(endpoint, q)
 	# df = get_sparql_dataframe(endpoint, q, USER_AGENT)
+
+	# Wikidata can return multiple rows per td (e.g. several official websites);
+	# keep the first to avoid duplicating authorities in the merged GeoJSON.
+	df = df.drop_duplicates(subset=['td'])
 	
 	df.td = df.td.str.replace('http://www.wikidata.org/entity/' , '', regex=True)
 	return df
