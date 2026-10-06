@@ -62,8 +62,26 @@ def get_wikidata_frame():
     df = get_sparql_dataframe(endpoint, q)
     # df = get_sparql_dataframe(endpoint, q, USER_AGENT)
 
-    # Keep one result per authority to prevent duplicate features in the output.
-    df = df.drop_duplicates(subset=['td'])
+    def unique_values(values):
+        return sorted({str(value) for value in values if pd.notna(value)})
+
+    df = df.groupby('td', as_index=False).agg(
+        tdLabel=('tdLabel', lambda values: (unique_values(values) or [None])[0]),
+        officalWebsites=('officalWebsite', unique_values),
+        shortNames=('shortName', unique_values),
+        twitterUserNames=('twitterUserName', unique_values),
+        linkedInOrgIds=('linkedInOrgId', unique_values)
+    )
+
+    for plural, singular in [
+        ('officalWebsites', 'officalWebsite'),
+        ('shortNames', 'shortName'),
+        ('twitterUserNames', 'twitterUserName'),
+        ('linkedInOrgIds', 'linkedInOrgId')
+    ]:
+        values = df[plural]
+        df.loc[:, singular] = values.map(lambda items: items[0] if items else None)
+        df.loc[:, plural] = values.map(lambda items: '|'.join(items) if len(items) > 1 else None)
 
     df.td = df.td.str.replace('http://www.wikidata.org/entity/' , '', regex=True)
     return df
@@ -101,36 +119,40 @@ def merge():
     print(f"GeoJSON for GitHub Pages: {GITHUB_PAGES_GEOJSON_PATH}")
 
 def write_geojson_with_metadata(gdf, filepath):
-	"""
-	Writes a GeoDataFrame to GeoJSON with additional metadata.
-	Each feature is written on its own line for better readability.
-	"""
-	import json
+    """
+    Writes a GeoDataFrame to GeoJSON with additional metadata.
+    Each feature is written on its own line for better readability.
+    """
+    import json
 
-	# Convert GeoDataFrame to GeoJSON dict (drop_id=True removes auto-generated ids)
-	geojson_dict = json.loads(gdf.to_json(drop_id=True))
+    # Convert GeoDataFrame to GeoJSON dict (drop_id=True removes auto-generated ids)
+    geojson_dict = json.loads(gdf.to_json(drop_id=True))
+    for feature in geojson_dict['features']:
+        for field in ('officalWebsites', 'shortNames', 'twitterUserNames', 'linkedInOrgIds'):
+            if not feature['properties'].get(field):
+                feature['properties'].pop(field, None)
 
-	# Build metadata
-	now = datetime.now()
-	metadata = {
-		'generated': now.strftime('%Y-%m-%d'),
-		'source': 'https://github.com/highsource/verbundkarte',
-		'description': 'Verkehrs- und Tarifverbünde in Deutschland'
-	}
+    # Build metadata
+    now = datetime.now()
+    metadata = {
+        'generated': now.strftime('%Y-%m-%d'),
+        'source': 'https://github.com/highsource/verbundkarte',
+        'description': 'Verkehrs- und Tarifverbünde in Deutschland'
+    }
 
-	# Write with custom formatting: metadata formatted, features one per line
-	with open(filepath, 'w', encoding='utf-8') as f:
-		f.write('{\n')
-		f.write('  "metadata": ' + json.dumps(metadata, ensure_ascii=False) + ',\n')
-		f.write('  "type": "FeatureCollection",\n')
-		f.write('  "name": "verbundkarte",\n')
-		f.write('  "features": [\n')
-		features = geojson_dict['features']
-		for i, feature in enumerate(features):
-			comma = ',' if i < len(features) - 1 else ''
-			f.write('    ' + json.dumps(feature, ensure_ascii=False) + comma + '\n')
-		f.write('  ]\n')
-		f.write('}\n')
+    # Write with custom formatting: metadata formatted, features one per line
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write('{\n')
+        f.write('  "metadata": ' + json.dumps(metadata, ensure_ascii=False) + ',\n')
+        f.write('  "type": "FeatureCollection",\n')
+        f.write('  "name": "verbundkarte",\n')
+        f.write('  "features": [\n')
+        features = geojson_dict['features']
+        for i, feature in enumerate(features):
+            comma = ',' if i < len(features) - 1 else ''
+            f.write('    ' + json.dumps(feature, ensure_ascii=False) + comma + '\n')
+        f.write('  ]\n')
+        f.write('}\n')
 
 
 def main():

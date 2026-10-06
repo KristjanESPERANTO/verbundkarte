@@ -411,6 +411,21 @@
         // Karte initialisieren - Zentrum auf Deutschland
         const map = L.map('map').setView([51.1657, 10.4515], 6);
 
+        function escapeHtml(value) {
+            const element = document.createElement('span');
+            element.textContent = String(value);
+            return element.innerHTML;
+        }
+
+        function safeHttpUrl(value) {
+            try {
+                const url = new URL(value);
+                return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+            } catch {
+                return null;
+            }
+        }
+
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             className: 'basemap-light',
@@ -428,11 +443,11 @@
 
         info.update = function(props) {
             if (props) {
-                const typeBadge = props.type ? `<span class="type-badge" style="background: ${typeColors[props.type] || typeColors.default}20; color: ${typeColors[props.type] || typeColors.default}">${typeLabels[props.type] || props.type}</span>` : '';
+                const typeBadge = props.type ? `<span class="type-badge" style="background: ${typeColors[props.type] || typeColors.default}20; color: ${typeColors[props.type] || typeColors.default}">${escapeHtml(typeLabels[props.type] || props.type)}</span>` : '';
                 this._div.innerHTML = `
-                    <h4>${props.name || props.org || 'Unbekannt'}</h4>
+                    <h4>${escapeHtml(props.name || props.org || 'Unbekannt')}</h4>
                     ${typeBadge}
-                    ${props.tdLabel ? `<p><strong>Wikidata:</strong> ${props.tdLabel}</p>` : ''}
+                    ${props.tdLabel ? `<p><strong>Wikidata:</strong> ${escapeHtml(props.tdLabel)}</p>` : ''}
                 `;
             } else {
                 this._div.innerHTML = '<p><em>Verbund auswählen für Details</em></p>';
@@ -646,8 +661,8 @@
                     const item = document.createElement('div');
                     item.className = 'search-result-item';
                     item.innerHTML = `
-                        <span class="org">${feature.properties.org || '–'}</span>
-                        <span class="label">${feature.properties.tdLabel || feature.properties.name || ''}</span>
+                        <span class="org">${escapeHtml(feature.properties.org || '–')}</span>
+                        <span class="label">${escapeHtml(feature.properties.tdLabel || feature.properties.name || '')}</span>
                     `;
                     item.addEventListener('click', () => {
                         selectVerbund(feature.properties.org);
@@ -789,28 +804,34 @@
             const color = typeColors[type] || typeColors.default;
 
             let html = `<div class="popup-content">
-                <h3>${props.name || props.org || 'Unbekannt'}${props.org && props.name ? ` – ${props.org}` : ''}</h3>`;
+                <h3>${escapeHtml(props.name || props.org || 'Unbekannt')}${props.org && props.name ? ` – ${escapeHtml(props.org)}` : ''}</h3>`;
 
             if (props.type) {
-                html += `<span class="type-badge" style="background: ${color}20; color: ${color}">${typeLabels[props.type] || props.type}</span>`;
+                html += `<span class="type-badge" style="background: ${color}20; color: ${color}">${escapeHtml(typeLabels[props.type] || props.type)}</span>`;
             }
 
             if (props.shortName && props.shortName !== props.org) {
-                html += `<p><strong>Kurzname:</strong> ${props.shortName}</p>`;
+                html += `<p><strong>Kurzname:</strong> ${escapeHtml(props.shortName)}</p>`;
             }
 
             html += '<div class="links">';
 
-            if (props.officalWebsite) {
-                html += `<a href="${props.officalWebsite}" target="_blank" rel="noopener">🌐 Website</a>`;
-            }
+            const websites = props.officalWebsites
+                ? props.officalWebsites.split('|')
+                : (props.officalWebsite ? [props.officalWebsite] : []);
+            websites.forEach((website, index) => {
+                const url = safeHttpUrl(website);
+                if (url) {
+                    html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">🌐 ${index === 0 ? 'Website' : `Website ${index + 1}`}</a>`;
+                }
+            });
 
             if (props.wikidata && props.wikidata !== '-') {
-                html += `<a href="https://www.wikidata.org/wiki/${props.wikidata}" target="_blank" rel="noopener">📚 Wikidata</a>`;
+                html += `<a href="https://www.wikidata.org/wiki/${encodeURIComponent(props.wikidata)}" target="_blank" rel="noopener">📚 Wikidata</a>`;
             }
 
             if (props.twitterUserName) {
-                html += `<a href="https://twitter.com/${props.twitterUserName}" target="_blank" rel="noopener">🐦 Twitter</a>`;
+                html += `<a href="https://twitter.com/${encodeURIComponent(props.twitterUserName)}" target="_blank" rel="noopener">🐦 Twitter</a>`;
             }
 
             html += '</div></div>';
@@ -866,7 +887,7 @@
                 const label = L.marker(center, {
                     icon: L.divIcon({
                         className: labelClass,
-                        html: org,
+                        html: escapeHtml(org),
                         iconSize: null
                     })
                 });
